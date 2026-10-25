@@ -30,7 +30,7 @@ async function main() {
   const files = JSON.parse(await readFile(snapshot, 'utf8'));
   const tools = [
     { name: 'read_source', annotations: { readOnlyHint: true }, description: 'Read an inventoried source file with exact 1-based line numbers. Paginate large files.', inputSchema: { type: 'object', properties: { file: { type: 'string' }, start: { type: 'integer' }, count: { type: 'integer' } }, required: ['file'], additionalProperties: false } },
-    { name: 'search_source', annotations: { readOnlyHint: true }, description: 'Search ALL source files for a literal identifier or text. Follow every state/API consumer; paginate matches.', inputSchema: { type: 'object', properties: { text: { type: 'string' }, offset: { type: 'integer' } }, required: ['text'], additionalProperties: false } },
+    { name: 'search_source', annotations: { readOnlyHint: true }, description: 'Search the source snapshot for a literal identifier or text. Follow matches relevant to the requested UI workflow; paginate when needed.', inputSchema: { type: 'object', properties: { text: { type: 'string' }, offset: { type: 'integer' } }, required: ['text'], additionalProperties: false } },
   ];
   for await (const line of createInterface({ input: process.stdin })) {
     let request;

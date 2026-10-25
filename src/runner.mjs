@@ -3,7 +3,7 @@ import { promisify } from 'node:util';
 import { execFile } from 'node:child_process';
 import { access, mkdir, readFile, writeFile, realpath } from 'node:fs/promises';
 import path from 'node:path';
-import { compile, preserveContract, validate, report } from './core.mjs';
+import { compile, preserveContract, validate, report, sources, hash } from './core.mjs';
 
 const exec = promisify(execFile);
 async function inside(dir, file) {
@@ -42,14 +42,21 @@ export async function diagnostics(dir, result) {
   return JSON.stringify(items).slice(-180_000);
 }
 
-export async function execute(root, dir) {
+export async function execute(root, dir, snapshot) {
+  const checkSources = async () => {
+    if (!snapshot) return;
+    const current = await sources(root);
+    const changed = [...new Set([...Object.keys(snapshot), ...Object.keys(current)])].filter(file => !(file in snapshot) || !(file in current) || hash(snapshot[file]) !== hash(current[file]));
+    if (changed.length) throw new Error(`Source changed during journey validation: ${changed.join(', ')}; rerun against a stable checkout`);
+  };
+  await checkSources();
   const reportFile = path.join(dir, 'results.json');
   const playwright = path.join(root, 'node_modules/@playwright/test/cli.js');
   try { await access(playwright); } catch { throw new Error(`Install @playwright/test in ${root} and add a playwright.config that honors JOURNEY_TEST_DIR`); }
   const log = [];
   const exitCode = await new Promise((resolve, reject) => {
     const child = spawn(process.execPath, [playwright, 'test', path.join(dir, 'journeys.spec.ts'), '--reporter=list,json', '--output', path.join(dir, 'artifacts')], {
-      cwd: root, env: { ...process.env, JOURNEY_TEST_DIR: dir, DEVDEN_JOURNEY_TEST_DIR: dir, PLAYWRIGHT_JSON_OUTPUT_FILE: reportFile }, stdio: ['ignore', 'pipe', 'pipe'],
+      cwd: root, env: { ...process.env, JOURNEY_TEST_DIR: dir, PLAYWRIGHT_JSON_OUTPUT_FILE: reportFile }, stdio: ['ignore', 'pipe', 'pipe'],
     });
     const timer = setTimeout(() => child.kill('SIGTERM'), 5 * 60_000);
     for (const pipe of [child.stdout, child.stderr]) pipe.on('data', data => { log.push(data.toString()); process.stderr.write(data); });
@@ -61,6 +68,7 @@ export async function execute(root, dir) {
   try { result = JSON.parse(await readFile(reportFile, 'utf8')); } catch {
     throw new Error(`Browser runner did not produce a report; inspect ${dir}/run.log`);
   }
+  await checkSources();
   // A zero-test or skipped/flaky run is not evidence of correctness.
   const passed = exitCode === 0 && result.stats?.expected > 0 && result.stats.unexpected === 0 && result.stats.skipped === 0 && result.stats.flaky === 0;
   return { passed, result, feedback: passed ? '' : await diagnostics(dir, result) };
@@ -78,9 +86,10 @@ export async function feedbackLoop({ root, dir, plan, files, repairs, repair, ru
     await writeFile(path.join(attemptDir, 'plan.json'), JSON.stringify(plan, null, 2));
     await writeFile(path.join(attemptDir, 'journeys.md'), report(plan));
     await writeFile(path.join(attemptDir, 'journeys.spec.ts'), compile(plan, '../../../fixture'));
-    const outcome = await run(root, attemptDir);
+    const outcome = await run(root, attemptDir, files);
     attempts.push({ attempt, passed: outcome.passed, artifacts: attemptDir });
-    const summary = { passed: outcome.passed, boundary: 'Real frontend, mocked API; no backend integration or exhaustive coverage claim', backend: plan.backend ?? null, gaps: plan.journeys.flatMap(j => j.effects.filter(e => e.gap).map(e => ({ journey: j.id, effect: e.id, gap: e.gap }))), attempts };
+    const blocked = plan.journeys.filter(j => j.blocked).map(j => ({ journey: j.id, reason: j.blocked }));
+    const summary = { passed: outcome.passed && blocked.length === 0, browserPassed: outcome.passed, blocked, boundary: 'As provided by the app fixture (tests/journeys/fixture.ts); no exhaustive coverage claim', backend: plan.backend ?? null, gaps: plan.journeys.flatMap(j => j.effects.filter(e => e.gap).map(e => ({ journey: j.id, effect: e.id, gap: e.gap }))), attempts };
     await writeFile(path.join(dir, 'summary.json'), JSON.stringify(summary, null, 2));
     if (outcome.passed || attempt === repairs) return summary;
     await writeFile(path.join(attemptDir, 'feedback.json'), outcome.feedback);
