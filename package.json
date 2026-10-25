@@ -1,0 +1,29 @@
+{
+  "name": "journey-agent",
+  "version": "0.1.0",
+  "type": "module",
+  "description": "Propose UI journey tests, approve the plan, then write and run Playwright scripts.",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/aishwarya-sureshV/journey-agent.git"
+  },
+  "engines": {
+    "node": ">=22.13"
+  },
+  "bin": {
+    "journey": "./bin/journey.mjs"
+  },
+  "files": [
+    "bin",
+    "src",
+    "README.md"
+  ],
+  "scripts": {
+    "test": "node --test test/core.test.mjs",
+    "journey": "node bin/journey.mjs"
+  },
+  "devDependencies": {
+    "typescript": "^5.9.0"
+  }
+}
