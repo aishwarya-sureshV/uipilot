@@ -29,7 +29,9 @@ const discoveryInstructions = `Discover user goals by tracing UI handlers -> sha
 export const MODEL = 'gpt-6-luna';
 export const REASONING = 'xhigh';
 
-export function codexArgs(dir, reader, model = MODEL) {
+const liveAppInstructions = baseUrl => `LIVE APP. The running app is at ${baseUrl}, reachable through browser_open, browser_snapshot, browser_click and browser_fill. Source tells you what the code intends; the live app shows what users actually get. After reading the relevant source, walk the requested tasks in the browser: open the page, perform each task with the same targets your plan steps will use, and read the resulting accessibility tree to confirm accessible names and what the user sees as the outcome. Take locator names from the tree, not from guesses. If the live app disagrees with the source, trust what you observed for locators and record the disagreement as a gap; never turn a broken behavior into an expected outcome. This may be a shared instance: only change or delete data you created while exploring, and never act on payments, invitations or messages to real people. Evidence still cites source lines.`;
+
+export function codexArgs(dir, reader, model = MODEL, browser = null) {
   return ['exec', '--ignore-user-config', '--ignore-rules', '--ephemeral', '--skip-git-repo-check',
     '--sandbox', 'read-only', '--model', model, '-c', `model_reasoning_effort="${REASONING}"`,
     '-c', 'approval_policy="never"', '-c', 'features.shell_tool=false', '-c', 'features.multi_agent=false',
@@ -38,11 +40,15 @@ export function codexArgs(dir, reader, model = MODEL) {
     '-c', `mcp_servers.journey.args=${JSON.stringify([reader, path.join(dir, 'sources.json'), path.join(dir, 'reads.jsonl')])}`,
     '-c', 'mcp_servers.journey.required=true',
     '-c', 'mcp_servers.journey.default_tools_approval_mode="auto"',
+    ...(browser ? ['-c', `mcp_servers.browser.command=${JSON.stringify(process.execPath)}`,
+      '-c', `mcp_servers.browser.args=${JSON.stringify([browser.script, browser.root, browser.baseUrl])}`,
+      '-c', 'mcp_servers.browser.required=true', '-c', 'mcp_servers.browser.default_tools_approval_mode="auto"',
+      '-c', 'mcp_servers.browser.tool_timeout_sec=60'] : []),
     '--cd', dir, '--output-schema', path.join(dir, 'schema.json'),
     '--output-last-message', path.join(dir, 'answer.json'), '--json', '-'];
 }
 
-export async function ask({ root, packageRoot = root, files, prompt, task = prompt, model = MODEL, baseline, executionRepair = false, budget = { remaining: 0 } }) {
+export async function ask({ root, packageRoot = root, files, prompt, task = prompt, model = MODEL, baseline, executionRepair = false, budget = { remaining: 0 }, baseUrl = null }) {
   const startedAt = Date.now();
   let usage = null;
   const dir = await mkdtemp(path.join(tmpdir(), 'journey-source-'));
@@ -53,7 +59,7 @@ export async function ask({ root, packageRoot = root, files, prompt, task = prom
     const reader = path.join(packageRoot, 'src/source-reader.mjs');
     process.stderr.write(`Journey backend: ${model} / ${REASONING}\n`);
     await new Promise((resolve, reject) => {
-      const child = spawn(process.env.JOURNEY_CODEX_BIN || 'codex', codexArgs(dir, reader, model), { stdio: ['pipe', 'pipe', 'pipe'] });
+      const child = spawn(process.env.JOURNEY_CODEX_BIN || 'codex', codexArgs(dir, reader, model, baseUrl ? { script: path.join(packageRoot, 'src/browser-tool.mjs'), root, baseUrl } : null), { stdio: ['pipe', 'pipe', 'pipe'] });
       let errors = '', pending = '', timedOut = false;
       const timer = setTimeout(() => { timedOut = true; child.kill('SIGTERM'); }, 10 * 60_000);
       child.stderr.on('data', data => { errors = (errors + data.toString()).slice(-8000); });
@@ -72,7 +78,7 @@ export async function ask({ root, packageRoot = root, files, prompt, task = prom
       child.on('error', error => { clearTimeout(timer); reject(error); });
       child.on('close', code => { clearTimeout(timer); code === 0 ? resolve() : reject(new Error(timedOut ? 'Journey model timed out after 10 minutes' : `Codex failed (${code}): ${errors}`)); });
       child.stdin.on('error', () => {});
-      child.stdin.end(`${instructions}\n${baseline || executionRepair ? 'This plan is already discovered. Make a targeted correction; inspect only implicated sources and reuse unaffected evidence. Do not repeat discovery.' : discoveryInstructions}\n${executionRepair ? executionRepairInstructions : 'This is draft authoring/validation. Correct invalid structure and evidence, and add missing outcome checks as required. Execution-repair restrictions do not apply to a draft.'}\nUse ONLY journey read_source/search_source tools for source inspection. No shell or edits.\n${prompt}\nAvailable source files:\n${Object.keys(files).join('\n')}`);
+      child.stdin.end(`${instructions}\n${baseline || executionRepair ? 'This plan is already discovered. Make a targeted correction; inspect only implicated sources and reuse unaffected evidence. Do not repeat discovery.' : discoveryInstructions}\n${executionRepair ? executionRepairInstructions : 'This is draft authoring/validation. Correct invalid structure and evidence, and add missing outcome checks as required. Execution-repair restrictions do not apply to a draft.'}\n${baseUrl ? `${liveAppInstructions(baseUrl)}\n` : ''}Use ONLY journey read_source/search_source tools for source inspection${baseUrl ? ' and the browser_* tools for the live app' : ''}. No shell or edits.\n${prompt}\nAvailable source files:\n${Object.keys(files).join('\n')}`);
     });
     const raw = await readFile(path.join(dir, 'answer.json'), 'utf8');
     const read = new Set((await readFile(path.join(dir, 'reads.jsonl'), 'utf8')).split('\n').filter(Boolean).map(line => JSON.parse(line)));
@@ -89,7 +95,7 @@ export async function ask({ root, packageRoot = root, files, prompt, task = prom
       process.stderr.write(`${error.message}\nRejected plan retained at ${rejected}\n`);
       if (budget.remaining <= 0) throw error;
       budget.remaining--;
-      return await ask({ root, packageRoot, files, model, budget, task, executionRepair,
+      return await ask({ root, packageRoot, files, model, budget, task, executionRepair, baseUrl,
         baseline: { inspectedFiles: [...new Set([...previouslyRead, ...read])] },
         prompt: `Make a targeted correction of this already-discovered plan, including inaccurate evidence and missing required outcome checks. Keep existing valid effects, checks and expected outcomes. This is a fresh process; previous source reads are not in your context, but valid evidence may be reused from the inspected files listed below. Inspect sources implicated by the validation error; do not repeat discovery or reread unaffected files. The original task is for scope and constraints only${executionRepair ? '; preserve its frozen execution-repair contract' : ''}.\nPREVIOUSLY INSPECTED FILES:\n${JSON.stringify([...new Set([...previouslyRead, ...read])])}\nORIGINAL TASK:\n${task}\nVALIDATION ERROR: ${error.message}\nPLAN:\n${plan ? JSON.stringify(plan) : raw}`,
       });

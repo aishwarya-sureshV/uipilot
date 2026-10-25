@@ -6,6 +6,8 @@ import path from 'node:path';
 import { compile, preserveContract, validate, report, sources, hash } from './core.mjs';
 
 const exec = promisify(execFile);
+// ~15k tokens: enough for the failing assertion, page snapshot and recent trace without flooding repairs.
+const DIAGNOSTICS_LIMIT = 60_000;
 async function inside(dir, file) {
   const actual = await realpath(file);
   const relative = path.relative(await realpath(dir), actual);
@@ -35,11 +37,20 @@ export async function diagnostics(dir, result) {
       for (const entry of stdout.split('\n').filter(n => /\.trace$/.test(n))) {
         const { stdout: trace } = await exec('unzip', ['-p', filename, entry], { maxBuffer: 20_000_000 });
         const events = trace.split('\n').flatMap(line => { try { return [JSON.parse(line)]; } catch { return []; } });
-        items.push({ trace: entry, events: events.filter(e => ['before', 'after', 'log', 'console', 'event'].includes(e.type)).slice(-100) });
+        items.push({ trace: entry, events: events.filter(e => ['before', 'after', 'log', 'console', 'event'].includes(e.type)).slice(-40) });
       }
     } else if (/json|text/.test(attachment.contentType)) items.push({ name: attachment.name, content: (await readFile(filename, 'utf8')).slice(-60_000) });
   }
-  return JSON.stringify(items).slice(-180_000);
+  // Most useful first, within a budget: errors, then page state and logs, then trace tail.
+  // The old tail-slice dropped the errors first, since they lead the list.
+  const rank = item => item.errors ? 0 : item.trace ? 2 : 1;
+  let text = '';
+  for (const item of items.sort((a, b) => rank(a) - rank(b))) {
+    const entry = JSON.stringify(item) + '\n';
+    if (text.length + entry.length > DIAGNOSTICS_LIMIT) return text + entry.slice(0, Math.max(0, DIAGNOSTICS_LIMIT - text.length)) + '… (diagnostics truncated)';
+    text += entry;
+  }
+  return text;
 }
 
 export async function execute(root, dir, snapshot) {

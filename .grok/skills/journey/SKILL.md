@@ -29,6 +29,8 @@ When the argument is not a `plan.json` path, discover and stop:
 node <package>/bin/journey.mjs discover --root <app> --focus "<argument or the user's feature>"
 ```
 
+If the app is running locally or on a test instance (a dev server you can see, or one the user names), add `--base-url <its URL>` so the model also explores the live app. Never pass a production URL: exploration clicks and fills real data.
+
 Show the printed journey report and the `Plan:` path. Stop. Ask for approval. Do not run `auto`, `generate`, `run`, or `propose --yes` in this step.
 
 Review the plan the way a user would judge it:

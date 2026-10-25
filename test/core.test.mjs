@@ -10,6 +10,7 @@ import { alignEvidence, compile, report, schema, sources, validate, preserveCont
 import { approvalSummary, parseApproval, waitForApproval } from '../src/approval.mjs';
 import { diagnostics, execute, feedbackLoop } from '../src/runner.mjs';
 import { sourceTool } from '../src/source-reader.mjs';
+import { explorer, locate, pageUrl, treeChange, tools as browserTools } from '../src/browser-tool.mjs';
 import { ask, codexArgs } from '../src/model.mjs';
 
 const files = { 'src/example.tsx': 'setNotes(next);\n' };
@@ -338,6 +339,9 @@ test('source tools confine reads to the snapshot and paginate all consumer match
   const matches = JSON.parse(sourceTool({ 'src/a.ts': 'catalog\n'.repeat(110) }, 'search_source', { text: 'catalog' }));
   assert.equal(matches.total, 110); assert.equal(matches.matches.length, 100); assert.equal(matches.nextOffset, 100);
   assert.equal(JSON.parse(sourceTool({ 'src/a.ts': 'catalog\n'.repeat(110) }, 'search_source', { text: 'catalog', offset: 100 })).matches.length, 10);
+  const long = JSON.parse(sourceTool({ 'src/b.tsx': `${'x'.repeat(900)} statusLabel ${'y'.repeat(900)}` }, 'search_source', { text: 'statusLabel' })).matches[0].text;
+  assert.match(long, /^…x+ statusLabel y+…$/);
+  assert.ok(long.length < 260);
 });
 
 test('discovery and repairs default to the requested Luna model with extra-high reasoning', () => {
@@ -418,4 +422,76 @@ test('default source scan covers common layouts and skips dependencies and build
     const found = Object.keys(await sources(dir)).sort();
     assert.deepEqual(found, ['app/page.tsx', 'playwright.config.js', 'src/Card.svelte', 'src/Page.jsx', 'src/View.vue']);
   } finally { await rm(dir, { recursive: true, force: true }); }
+});
+
+test('live exploration stays on the app and uses plan target semantics', async () => {
+  const base = 'http://localhost:5173';
+  assert.equal(pageUrl(base, '/notes?x=1'), 'http://localhost:5173/notes?x=1');
+  for (const bad of ['https://example.com', '//example.com/x', 'notes', '', null]) assert.throws(() => pageUrl(base, bad), /path must start with \//);
+  const calls = [];
+  const page = new Proxy({}, { get: (_, method) => (...args) => { calls.push([method, ...args]); return 'locator'; } });
+  locate(page, { by: 'role', role: 'button', name: 'Save' });
+  locate(page, { by: 'label', role: '', name: 'Amount' });
+  assert.deepEqual(calls, [['getByRole', 'button', { name: 'Save', exact: true }], ['getByLabel', 'Amount', { exact: true }]]);
+  assert.throws(() => locate(page, { by: 'css', name: '.x' }), /target.by must be/);
+  assert.deepEqual(browserTools.map(t => t.name), ['browser_open', 'browser_snapshot', 'browser_click', 'browser_fill']);
+  const fakePage = { setDefaultTimeout() {}, async route() {}, url: () => 'about:blank' };
+  let launched = 0;
+  const app = explorer(base, async () => { launched++; return { newContext: async () => ({ newPage: async () => fakePage }), close: async () => {} }; });
+  await assert.rejects(app.call('browser_snapshot', {}), /Open a page first/);
+  await assert.rejects(app.call('browser_open', { path: 'https://evil.test/' }), /stay on the app/);
+  await assert.rejects(app.call('browser_type', {}), /Unknown tool/);
+  assert.equal(launched, 1);
+});
+
+test('browser tools are offered to the model only with a base URL', async () => {
+  assert.ok(!codexArgs('/tmp/x', '/tmp/reader.mjs').some(arg => arg.includes('mcp_servers.browser')));
+  const args = codexArgs('/tmp/x', '/tmp/reader.mjs', undefined, { script: '/pkg/src/browser-tool.mjs', root: '/app', baseUrl: 'http://localhost:5173' });
+  assert.ok(args.includes(`mcp_servers.browser.args=${JSON.stringify(['/pkg/src/browser-tool.mjs', '/app', 'http://localhost:5173'])}`));
+  assert.ok(args.includes('mcp_servers.browser.required=true'));
+  const dir = await mkdtemp(path.join(tmpdir(), 'journey-live-'));
+  const previous = process.env.JOURNEY_CODEX_BIN;
+  try {
+    const fake = path.join(dir, 'codex.mjs');
+    await writeFile(fake, `#!/usr/bin/env node
+import { writeFile } from 'node:fs/promises';
+import path from 'node:path';
+let prompt = ''; for await (const chunk of process.stdin) prompt += chunk;
+const args = process.argv.slice(2), output = args[args.indexOf('--output-last-message') + 1];
+await writeFile(${JSON.stringify(path.join(dir, 'seen.json'))}, JSON.stringify({ prompt, args }));
+await writeFile(output, JSON.stringify(${JSON.stringify(plan)}));
+await writeFile(path.join(path.dirname(output), 'reads.jsonl'), JSON.stringify('src/example.tsx') + '\\n');
+`);
+    await chmod(fake, 0o755);
+    process.env.JOURNEY_CODEX_BIN = fake;
+    await ask({ root: dir, files, prompt: 'Discover', baseUrl: 'http://localhost:5173' });
+    const seen = JSON.parse(await readFile(path.join(dir, 'seen.json'), 'utf8'));
+    assert.match(seen.prompt, /LIVE APP\. The running app is at http:\/\/localhost:5173/);
+    assert.match(seen.prompt, /Take locator names from the tree, not from guesses/);
+    assert.match(seen.prompt, /only change or delete data you created while exploring/);
+    assert.ok(seen.args.some(arg => arg.startsWith('mcp_servers.browser.args=')));
+    await ask({ root: dir, files, prompt: 'Discover' });
+    const plain = JSON.parse(await readFile(path.join(dir, 'seen.json'), 'utf8'));
+    assert.doesNotMatch(plain.prompt, /LIVE APP/);
+  } finally {
+    if (previous === undefined) delete process.env.JOURNEY_CODEX_BIN; else process.env.JOURNEY_CODEX_BIN = previous;
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
+test('diagnostics keep errors first within the budget', async () => {
+  const noise = { name: 'log', contentType: 'text/plain', body: Buffer.from('x'.repeat(59_000)).toString('base64') };
+  const text = await diagnostics(tmpdir(), { suites: [{ attachments: [noise, noise] }, { errors: [{ message: 'expected ₹500, got ₹50' }] }] });
+  assert.ok(text.startsWith('{"errors"'));
+  assert.match(text, /expected ₹500, got ₹50/);
+  assert.ok(text.length <= 60_000 + 30);
+  assert.match(text, /diagnostics truncated/);
+});
+
+test('tree changes count repeated lines and keep only what differs', () => {
+  const before = ['- heading "Tag"', '- paragraph: Balance ₹1,200', '- cell "-₹40"', '- cell "-₹40"'].join('\n');
+  const after = ['- heading "Tag"', '- paragraph: Balance ₹1,700', '- cell "+₹500"', '- cell "-₹40"', '- cell "-₹40"'].join('\n');
+  assert.deepEqual(treeChange(before, after), { removed: ['- paragraph: Balance ₹1,200'], added: ['- paragraph: Balance ₹1,700', '- cell "+₹500"'], size: 5 });
+  assert.deepEqual(treeChange(after, after), { removed: [], added: [], size: 5 });
+  assert.deepEqual(treeChange('- cell "-₹40"', '- cell "-₹40"\n- cell "-₹40"').added, ['- cell "-₹40"']);
 });

@@ -17,6 +17,21 @@ It works with any web app that has a Playwright setup and a small fixture (below
 - **Restrictions are tested by trying them.** For permissions, roles, modes or approvals, the input asks for the restricted thing, and both the denied and the allowed outcome are checked.
 - **Blocked, not faked.** If the harness can't execute or observe a required outcome, the whole journey is reported as blocked, naming the missing capability. A run with passing browser tests and blocked journeys reports `passed: false` and `browserPassed: true`.
 
+## Live exploration
+
+Without `--base-url`, the model plans from source alone, and locators are corrected only after a failed run. With it, the model also explores the running app during discovery and repairs, using four tools:
+
+| Tool | What it does |
+|---|---|
+| `browser_open` | Opens a path of the app (`/notes`) and returns the accessibility tree |
+| `browser_snapshot` | Returns the current URL and accessibility tree |
+| `browser_click` | Clicks a plan target (`{by, role, name}`) and returns what changed on the page |
+| `browser_fill` | Fills a plan target with a value and returns what changed on the page |
+
+Clicks and fills return only the lines of the tree that changed (or the full tree when the page changed), since the model already has the rest. On an 80-row statement page that cut a fill-and-recharge from about 7,500 tokens to about 100. Targets use the same matching as the generated tests, so a step that works while exploring works in the test. The model walks the requested tasks, takes locator names from what it sees, and records places where the live app and the source disagree as gaps. Evidence still cites source.
+
+Exploration stays on the app: paths must be on the base URL, and links to other sites are cancelled before they load. Clicks and fills do change the app's data, so point `--base-url` at a local or test instance. The model is told to change or delete only data it created, and never to act on payments, invitations or messages to real people. Playwright is loaded from the app under test; journey-agent adds no dependency.
+
 ## Fixture contract
 
 The app under test provides `@playwright/test`, a Playwright config (`playwright.config.ts`, `.js`, `.mjs` or `.cjs`) whose `testDir` is `process.env.JOURNEY_TEST_DIR` when set, and `tests/journeys/fixture.ts`. The fixture extends Playwright's `test` with an `app` object:
@@ -78,6 +93,7 @@ npm install
 # The config must use JOURNEY_TEST_DIR as testDir when that env var is set.
 
 journey discover --root /path/to/app --focus "the feature"
+journey discover --root /path/to/app --base-url http://localhost:5173 --focus "the feature"
 journey propose --root /path/to/app --focus "the feature"
 journey propose --root /path/to/app tests/journeys/generated/<run>/plan.json
 journey run --root /path/to/app tests/journeys/generated/<run>/plan.json --repairs 0
@@ -85,6 +101,8 @@ journey auto --root /path/to/app --focus "the feature"
 ```
 
 `propose` asks in the terminal. `y` writes scripts and runs them. `n` keeps the plan and writes nothing. A non-interactive shell stops unless you pass `--yes`.
+
+`--base-url` (or `JOURNEY_BASE_URL`) points at the running app and turns on live exploration (below).
 
 `--model` overrides the model. The default is Codex `gpt-6-luna` with `xhigh` reasoning. `JOURNEY_CODEX_BIN` selects the Codex executable. `--repairs` accepts 0–3, bounding draft-validation retries and browser repairs separately. Each browser repair has its own validation allowance.
 
