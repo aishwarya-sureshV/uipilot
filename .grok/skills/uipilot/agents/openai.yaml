@@ -1,0 +1,7 @@
+interface:
+  display_name: "uipilot"
+  short_description: "Propose UI journeys, then wait for approval"
+  default_prompt: "Use $uipilot to propose UI journey tests for this app and wait for approval."
+
+policy:
+  allow_implicit_invocation: false

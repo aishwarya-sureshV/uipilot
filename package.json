@@ -1,18 +1,18 @@
 {
-  "name": "journey-agent",
+  "name": "uipilot",
   "version": "0.1.0",
   "type": "module",
-  "description": "Propose UI journey tests, approve the plan, then write and run Playwright scripts.",
+  "description": "UI automation agent: proposes end-to-end user journeys from your app, you approve, it writes and runs Playwright.",
   "license": "MIT",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/aishwarya-sureshV/journey-agent.git"
+    "url": "git+https://github.com/aishwarya-sureshV/uipilot.git"
   },
   "engines": {
     "node": ">=22.13"
   },
   "bin": {
-    "journey": "./bin/journey.mjs"
+    "uipilot": "./bin/uipilot.mjs"
   },
   "files": [
     "bin",
@@ -21,7 +21,7 @@
   ],
   "scripts": {
     "test": "node --test test/core.test.mjs",
-    "journey": "node bin/journey.mjs"
+    "uipilot": "node bin/uipilot.mjs"
   },
   "devDependencies": {
     "typescript": "^5.9.0"

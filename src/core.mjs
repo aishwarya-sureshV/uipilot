@@ -28,10 +28,10 @@ export const schema = object({ journeys: array(object({
   })),
 })) });
 
-// Common app layouts; missing directories are skipped. JOURNEY_SOURCE_DIRS overrides.
+// Common app layouts; missing directories are skipped. UIPILOT_SOURCE_DIRS overrides.
 const defaultDirs = 'src,app,pages,components,lib,server';
 const skipDirs = new Set(['node_modules', 'dist', 'build', 'coverage', '.git', '.next', '.nuxt', '.svelte-kit', 'generated']);
-export async function sources(root, dirs = (process.env.JOURNEY_SOURCE_DIRS || defaultDirs).split(',').map(dir => dir.trim()).filter(Boolean)) {
+export async function sources(root, dirs = (process.env.UIPILOT_SOURCE_DIRS || defaultDirs).split(',').map(dir => dir.trim()).filter(Boolean)) {
   const result = {};
   async function walk(dir) {
     let entries;
@@ -45,7 +45,7 @@ export async function sources(root, dirs = (process.env.JOURNEY_SOURCE_DIRS || d
   }
   for (const dir of dirs) await walk(dir);
   if (!Object.keys(result).length) throw new Error(`No UI source files under ${dirs.join(', ')} in ${root}`);
-  for (const file of ['tests/journeys/fixture.ts', ...['ts', 'js', 'mjs', 'cjs'].map(ext => `playwright.config.${ext}`)]) {
+  for (const file of ['tests/uipilot/fixture.ts', ...['ts', 'js', 'mjs', 'cjs'].map(ext => `playwright.config.${ext}`)]) {
     try { result[file] = await readFile(path.join(root, file), 'utf8'); }
     catch (error) { if (error.code !== 'ENOENT') throw error; }
   }
@@ -173,7 +173,7 @@ export function validate(plan, files) {
         if (['act', 'state'].includes(op.kind)) {
           const name = op.kind === 'act' ? parse(where, fixtureAct, op.value).name : parse(where, fixtureState, op.value).probe;
           // ponytail: textual lookup of the name in fixture.ts; parse its exported capability map if names start colliding.
-          if (!files['tests/journeys/fixture.ts']?.includes(name)) fail(`${journey.id}/${step.id}: ${op.kind} "${name}" is not provided by tests/journeys/fixture.ts; use a capability it defines, or mark the task blocked and name the missing capability`);
+          if (!files['tests/uipilot/fixture.ts']?.includes(name)) fail(`${journey.id}/${step.id}: ${op.kind} "${name}" is not provided by tests/uipilot/fixture.ts; use a capability it defines, or mark the task blocked and name the missing capability`);
         }
       }
       validateEvidence(step.evidence);
@@ -191,7 +191,7 @@ export function validate(plan, files) {
 }
 
 export function report(plan) {
-  return '# User journeys\n\nExpectations are source-inferred; they are not independent product requirements. The execution boundary is whatever the app fixture (tests/journeys/fixture.ts) provides. Consumer discovery is not exhaustive. Setup visibility and configuration alone do not prove task completion.\n\n' + plan.journeys.map(j => `## ${j.id}\n\n${j.goal}\n\nPrerequisites: ${j.prerequisites.join('; ')}\n\nConsumer coverage:\n${j.effects.map(e => `- ${e.required ? 'REQUIRED TASK OUTCOME: ' : ''}${e.trigger} → ${e.consumer} → ${e.expected}: ${e.gap ? `GAP: ${e.gap}` : `${e.required ? `exercise ${e.exercise}; ` : ''}${e.coveredBy.map(c => `${c.step}[${c.check}]`).join(', ')}`}`).join('\n')}\n\n` + (j.blocked ? `BLOCKED: ${j.blocked}\n` : j.steps.map((s, i) => `${i + 1}. **${s.task}**\n   - Why: ${s.because}\n   - Expect: ${s.checks.map(c => `${c.kind} ${c.target?.name ?? ''} ${c.value}`.replace(/\s+/g, ' ').trim()).join('; ')}\n   - Source: ${s.evidence.map(e => `${e.file}:${e.line}`).join(', ')}`).join('\n'))).join('\n\n') + '\n';
+  return '# User journeys\n\nExpectations are source-inferred; they are not independent product requirements. The execution boundary is whatever the app fixture (tests/uipilot/fixture.ts) provides. Consumer discovery is not exhaustive. Setup visibility and configuration alone do not prove task completion.\n\n' + plan.journeys.map(j => `## ${j.id}\n\n${j.goal}\n\nPrerequisites: ${j.prerequisites.join('; ')}\n\nConsumer coverage:\n${j.effects.map(e => `- ${e.required ? 'REQUIRED TASK OUTCOME: ' : ''}${e.trigger} → ${e.consumer} → ${e.expected}: ${e.gap ? `GAP: ${e.gap}` : `${e.required ? `exercise ${e.exercise}; ` : ''}${e.coveredBy.map(c => `${c.step}[${c.check}]`).join(', ')}`}`).join('\n')}\n\n` + (j.blocked ? `BLOCKED: ${j.blocked}\n` : j.steps.map((s, i) => `${i + 1}. **${s.task}**\n   - Why: ${s.because}\n   - Expect: ${s.checks.map(c => `${c.kind} ${c.target?.name ?? ''} ${c.value}`.replace(/\s+/g, ' ').trim()).join('; ')}\n   - Source: ${s.evidence.map(e => `${e.file}:${e.line}`).join(', ')}`).join('\n'))).join('\n\n') + '\n';
 }
 
 const q = JSON.stringify;

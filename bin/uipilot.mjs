@@ -14,13 +14,13 @@ const { positionals, values } = parseArgs({ allowPositionals: true, options: {
   model: { type: 'string' }, repairs: { type: 'string', default: '2' },
   yes: { type: 'boolean', default: false },
   root: { type: 'string' },
-  'base-url': { type: 'string', default: process.env.JOURNEY_BASE_URL },
+  'base-url': { type: 'string', default: process.env.UIPILOT_BASE_URL },
 } });
 
 async function main() {
   const [command, input] = positionals;
   if (!['discover', 'generate', 'run', 'auto', 'propose'].includes(command) || (['generate', 'run'].includes(command) && !input)) {
-    throw new Error('Usage: journey discover|auto [--root app] [--base-url http://localhost:5173] [--focus "feature or goal"] [--model model]\n       journey propose [--root app] [--focus "feature or goal"] [--yes]\n       journey propose|generate|run [--root app] path/to/plan.json [--repairs 2]');
+    throw new Error('Usage: uipilot discover|auto [--root app] [--base-url http://localhost:5173] [--focus "feature or goal"] [--model model]\n       uipilot propose [--root app] [--focus "feature or goal"] [--yes]\n       uipilot propose|generate|run [--root app] path/to/plan.json [--repairs 2]');
   }
   const repairs = Number(values.repairs);
   if (!Number.isInteger(repairs) || repairs < 0 || repairs > 3) throw new Error('--repairs must be 0–3');
@@ -45,13 +45,13 @@ async function main() {
   }
   const markdown = report(plan);
   console.log(markdown); // Journeys appear BEFORE generation or execution.
-  const dir = path.join(root, 'tests/journeys/generated', `${Date.now()}-${command}`);
+  const dir = path.join(root, 'tests/uipilot/generated', `${Date.now()}-${command}`);
   await mkdir(dir, { recursive: true });
   await writeFile(path.join(dir, 'plan.json'), JSON.stringify(plan, null, 2) + '\n');
   await writeFile(path.join(dir, 'sources.json'), JSON.stringify(files));
   await writeFile(path.join(dir, 'journeys.md'), markdown);
   if (command === 'discover') {
-    console.log(`Plan: ${dir}/plan.json\nNext: journey propose --root ${root} ${path.relative(root, dir)}/plan.json`);
+    console.log(`Plan: ${dir}/plan.json\nNext: uipilot propose --root ${root} ${path.relative(root, dir)}/plan.json`);
     return;
   }
   if (!plan.journeys.some(j => !j.blocked)) throw new Error(`All journeys blocked; see ${dir}/journeys.md`);
@@ -61,17 +61,17 @@ async function main() {
     const decision = await waitForApproval({ yes: values.yes, stdin: process.stdin, stdout: process.stdout });
     await writeFile(path.join(dir, 'approval.json'), `${JSON.stringify({ decision, at: new Date().toISOString() }, null, 2)}\n`);
     if (decision === 'needs-tty') {
-      throw new Error(`Approval needs a terminal. Re-run in a terminal, pass --yes, or: journey propose --root ${root} ${planPath}`);
+      throw new Error(`Approval needs a terminal. Re-run in a terminal, pass --yes, or: uipilot propose --root ${root} ${planPath}`);
     }
     if (decision !== 'approve') {
-      console.log(`Stopped before writing scripts.\nEdit the plan if needed, then: journey propose --root ${root} ${planPath}`);
+      console.log(`Stopped before writing scripts.\nEdit the plan if needed, then: uipilot propose --root ${root} ${planPath}`);
       return;
     }
     console.log('Approved. Writing scripts and running.');
   }
   if (command === 'generate') {
     await writeFile(path.join(dir, 'journeys.spec.ts'), compile(plan, '../../fixture'));
-    console.log(`Tests: ${dir}/journeys.spec.ts\nRun: journey run --root ${root} ${path.relative(root, dir)}/plan.json`);
+    console.log(`Tests: ${dir}/journeys.spec.ts\nRun: uipilot run --root ${root} ${path.relative(root, dir)}/plan.json`);
     return;
   }
   const summary = await feedbackLoop({ root, dir, plan, files, repairs, repair: (baseline, feedback) => {

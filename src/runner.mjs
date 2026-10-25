@@ -63,11 +63,11 @@ export async function execute(root, dir, snapshot) {
   await checkSources();
   const reportFile = path.join(dir, 'results.json');
   const playwright = path.join(root, 'node_modules/@playwright/test/cli.js');
-  try { await access(playwright); } catch { throw new Error(`Install @playwright/test in ${root} and add a playwright.config that honors JOURNEY_TEST_DIR`); }
+  try { await access(playwright); } catch { throw new Error(`Install @playwright/test in ${root} and add a playwright.config that honors UIPILOT_TEST_DIR`); }
   const log = [];
   const exitCode = await new Promise((resolve, reject) => {
     const child = spawn(process.execPath, [playwright, 'test', path.join(dir, 'journeys.spec.ts'), '--reporter=list,json', '--output', path.join(dir, 'artifacts')], {
-      cwd: root, env: { ...process.env, JOURNEY_TEST_DIR: dir, PLAYWRIGHT_JSON_OUTPUT_FILE: reportFile }, stdio: ['ignore', 'pipe', 'pipe'],
+      cwd: root, env: { ...process.env, UIPILOT_TEST_DIR: dir, PLAYWRIGHT_JSON_OUTPUT_FILE: reportFile }, stdio: ['ignore', 'pipe', 'pipe'],
     });
     const timer = setTimeout(() => child.kill('SIGTERM'), 5 * 60_000);
     for (const pipe of [child.stdout, child.stderr]) pipe.on('data', data => { log.push(data.toString()); process.stderr.write(data); });
@@ -100,7 +100,7 @@ export async function feedbackLoop({ root, dir, plan, files, repairs, repair, ru
     const outcome = await run(root, attemptDir, files);
     attempts.push({ attempt, passed: outcome.passed, artifacts: attemptDir });
     const blocked = plan.journeys.filter(j => j.blocked).map(j => ({ journey: j.id, reason: j.blocked }));
-    const summary = { passed: outcome.passed && blocked.length === 0, browserPassed: outcome.passed, blocked, boundary: 'As provided by the app fixture (tests/journeys/fixture.ts); no exhaustive coverage claim', backend: plan.backend ?? null, gaps: plan.journeys.flatMap(j => j.effects.filter(e => e.gap).map(e => ({ journey: j.id, effect: e.id, gap: e.gap }))), attempts };
+    const summary = { passed: outcome.passed && blocked.length === 0, browserPassed: outcome.passed, blocked, boundary: 'As provided by the app fixture (tests/uipilot/fixture.ts); no exhaustive coverage claim', backend: plan.backend ?? null, gaps: plan.journeys.flatMap(j => j.effects.filter(e => e.gap).map(e => ({ journey: j.id, effect: e.id, gap: e.gap }))), attempts };
     await writeFile(path.join(dir, 'summary.json'), JSON.stringify(summary, null, 2));
     if (outcome.passed || attempt === repairs) return summary;
     await writeFile(path.join(attemptDir, 'feedback.json'), outcome.feedback);

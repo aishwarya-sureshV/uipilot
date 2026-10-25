@@ -1,6 +1,6 @@
-# journey-agent
+# uipilot
 
-Source-driven UI journey tests with a person in the loop. The agent reads the app, proposes journeys, and waits. After approval it compiles Playwright scripts and runs them. `auto` still skips the prompt.
+A UI automation agent that tests what users actually do. uipilot reads the app (and, optionally, explores it while it runs), proposes journeys, and waits. After approval it compiles Playwright scripts and runs them. `auto` still skips the prompt.
 
 This repo is the agent. Point it at an app with `--root`.
 
@@ -30,11 +30,11 @@ Without `--base-url`, the model plans from source alone, and locators are correc
 
 Clicks and fills return only the lines of the tree that changed (or the full tree when the page changed), since the model already has the rest. On an 80-row statement page that cut a fill-and-recharge from about 7,500 tokens to about 100. Targets use the same matching as the generated tests, so a step that works while exploring works in the test. The model walks the requested tasks, takes locator names from what it sees, and records places where the live app and the source disagree as gaps. Evidence still cites source.
 
-Exploration stays on the app: paths must be on the base URL, and links to other sites are cancelled before they load. Clicks and fills do change the app's data, so point `--base-url` at a local or test instance. The model is told to change or delete only data it created, and never to act on payments, invitations or messages to real people. Playwright is loaded from the app under test; journey-agent adds no dependency.
+Exploration stays on the app: paths must be on the base URL, and links to other sites are cancelled before they load. Clicks and fills do change the app's data, so point `--base-url` at a local or test instance. The model is told to change or delete only data it created, and never to act on payments, invitations or messages to real people. Playwright is loaded from the app under test; uipilot adds no dependency.
 
 ## Fixture contract
 
-The app under test provides `@playwright/test`, a Playwright config (`playwright.config.ts`, `.js`, `.mjs` or `.cjs`) whose `testDir` is `process.env.JOURNEY_TEST_DIR` when set, and `tests/journeys/fixture.ts`. The fixture extends Playwright's `test` with an `app` object:
+The app under test provides `@playwright/test`, a Playwright config (`playwright.config.ts`, `.js`, `.mjs` or `.cjs`) whose `testDir` is `process.env.UIPILOT_TEST_DIR` when set, and `tests/uipilot/fixture.ts`. The fixture extends Playwright's `test` with an `app` object:
 
 | Member | Used by | Purpose |
 |---|---|---|
@@ -68,49 +68,49 @@ export { expect };
 
 ## Slash command
 
-`/journey` is the skill in `.grok/skills/journey`. The same directory is what Claude Code and Codex load. Install it once for each host:
+`/uipilot` is the skill in `.grok/skills/uipilot`. The same directory is what Claude Code and Codex load. Install it once for each host:
 
 ```sh
 mkdir -p ~/.agents/skills ~/.grok/skills ~/.claude/skills ~/.codex/skills
-ln -sfn "$(pwd)/.grok/skills/journey" ~/.grok/skills/journey
-ln -sfn "$(pwd)/.grok/skills/journey" ~/.claude/skills/journey
-ln -sfn "$(pwd)/.grok/skills/journey" ~/.agents/skills/journey
-ln -sfn "$(pwd)/.grok/skills/journey" ~/.codex/skills/journey
+ln -sfn "$(pwd)/.grok/skills/uipilot" ~/.grok/skills/uipilot
+ln -sfn "$(pwd)/.grok/skills/uipilot" ~/.claude/skills/uipilot
+ln -sfn "$(pwd)/.grok/skills/uipilot" ~/.agents/skills/uipilot
+ln -sfn "$(pwd)/.grok/skills/uipilot" ~/.codex/skills/uipilot
 ```
 
 ```text
-/journey notes create, save, reopen, and delete
-$journey notes create, save, reopen, and delete
+/uipilot notes create, save, reopen, and delete
+$uipilot notes create, save, reopen, and delete
 ```
 
-Claude Code and Grok use `/journey`. Codex uses `$journey`, or the `/skills` picker. `/journey` does nothing in Codex. The Codex CLI reads `~/.agents/skills`. Codex Desktop also reads `~/.codex/skills`. Restart the app after linking. The command prints the plan and stops. Reply yes and it writes the scripts and runs them. Reply no and it keeps the plan. Discovery still runs through the Codex CLI.
+Claude Code and Grok use `/uipilot`. Codex uses `$uipilot`, or the `/skills` picker. `/uipilot` does nothing in Codex. The Codex CLI reads `~/.agents/skills`. Codex Desktop also reads `~/.codex/skills`. Restart the app after linking. The command prints the plan and stops. Reply yes and it writes the scripts and runs them. Reply no and it keeps the plan. Discovery still runs through the Codex CLI.
 
 ## CLI
 
 ```sh
 npm install
-# The app under test needs @playwright/test, a Playwright config, and tests/journeys/fixture.ts.
-# The config must use JOURNEY_TEST_DIR as testDir when that env var is set.
+# The app under test needs @playwright/test, a Playwright config, and tests/uipilot/fixture.ts.
+# The config must use UIPILOT_TEST_DIR as testDir when that env var is set.
 
-journey discover --root /path/to/app --focus "the feature"
-journey discover --root /path/to/app --base-url http://localhost:5173 --focus "the feature"
-journey propose --root /path/to/app --focus "the feature"
-journey propose --root /path/to/app tests/journeys/generated/<run>/plan.json
-journey run --root /path/to/app tests/journeys/generated/<run>/plan.json --repairs 0
-journey auto --root /path/to/app --focus "the feature"
+uipilot discover --root /path/to/app --focus "the feature"
+uipilot discover --root /path/to/app --base-url http://localhost:5173 --focus "the feature"
+uipilot propose --root /path/to/app --focus "the feature"
+uipilot propose --root /path/to/app tests/uipilot/generated/<run>/plan.json
+uipilot run --root /path/to/app tests/uipilot/generated/<run>/plan.json --repairs 0
+uipilot auto --root /path/to/app --focus "the feature"
 ```
 
 `propose` asks in the terminal. `y` writes scripts and runs them. `n` keeps the plan and writes nothing. A non-interactive shell stops unless you pass `--yes`.
 
-`--base-url` (or `JOURNEY_BASE_URL`) points at the running app and turns on live exploration (below).
+`--base-url` (or `UIPILOT_BASE_URL`) points at the running app and turns on live exploration (below).
 
-`--model` overrides the model. The default is Codex `gpt-6-luna` with `xhigh` reasoning. `JOURNEY_CODEX_BIN` selects the Codex executable. `--repairs` accepts 0–3, bounding draft-validation retries and browser repairs separately. Each browser repair has its own validation allowance.
+`--model` overrides the model. The default is Codex `gpt-6-luna` with `xhigh` reasoning. `UIPILOT_CODEX_BIN` selects the Codex executable. `--repairs` accepts 0–3, bounding draft-validation retries and browser repairs separately. Each browser repair has its own validation allowance.
 
-Source is read from `src/`, `app/`, `pages/`, `components/`, `lib/` and `server/` under `--root`, skipping `node_modules`, build output and generated tests. Set `JOURNEY_SOURCE_DIRS` to a comma-separated list to change that. Missing directories are skipped.
+Source is read from `src/`, `app/`, `pages/`, `components/`, `lib/` and `server/` under `--root`, skipping `node_modules`, build output and generated tests. Set `UIPILOT_SOURCE_DIRS` to a comma-separated list to change that. Missing directories are skipped.
 
 The app's fixture and Playwright config are also inventoried when present. CLI outputs save `sources.json`; browser runs check the inventoried source before and after execution and reject changes during validation.
 
-Generated files go in `<app>/tests/journeys/generated/` and are not written back into this package. The compiler emits data-driven Playwright against the app's `tests/journeys/fixture.ts`.
+Generated files go in `<app>/tests/uipilot/generated/` and are not written back into this package. The compiler emits data-driven Playwright against the app's `tests/uipilot/fixture.ts`.
 
 ```sh
 npm test

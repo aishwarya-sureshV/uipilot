@@ -1,32 +1,32 @@
 ---
-name: journey
+name: uipilot
 description: >
   Propose source-backed UI journey tests for the current app, show the plan,
   and write or run Playwright scripts only after the user approves.
-  Use when the user runs /journey or $journey.
+  Use when the user runs /uipilot or $uipilot.
 argument-hint: "[feature focus or plan.json]"
 user-invocable: true
 disable-model-invocation: true
 ---
 
-# /journey
+# /uipilot
 
 Propose UI journey tests, then wait. Scripts are written and executed only after the user approves that plan in this conversation.
 
-The CLI is `node "$PACKAGE/bin/journey.mjs"`. Resolve `PACKAGE` from this file, following symlinks:
+The CLI is `node "$PACKAGE/bin/uipilot.mjs"`. Resolve `PACKAGE` from this file, following symlinks:
 
 ```sh
 PACKAGE="$(cd "$(dirname "$(realpath <this SKILL.md>)")/../../.." && pwd)"
 ```
 
-`realpath` must follow the symlink. Three directories up from the real `SKILL.md` is the journey-agent repo, including when this skill is opened from `~/.claude/skills/journey`, `~/.agents/skills/journey`, or `~/.codex/skills/journey`. The app under test is the current workspace, or the directory the user names. Pass it as `--root`. Do not use the journey-agent package as the app.
+`realpath` must follow the symlink. Three directories up from the real `SKILL.md` is the uipilot repo, including when this skill is opened from `~/.claude/skills/uipilot`, `~/.agents/skills/uipilot`, or `~/.codex/skills/uipilot`. The app under test is the current workspace, or the directory the user names. Pass it as `--root`. Do not use the uipilot package as the app.
 
 ## Propose
 
 When the argument is not a `plan.json` path, discover and stop:
 
 ```sh
-node <package>/bin/journey.mjs discover --root <app> --focus "<argument or the user's feature>"
+node <package>/bin/uipilot.mjs discover --root <app> --focus "<argument or the user's feature>"
 ```
 
 If the app is running locally or on a test instance (a dev server you can see, or one the user names), add `--base-url <its URL>` so the model also explores the live app. Never pass a production URL: exploration clicks and fills real data.
@@ -49,7 +49,7 @@ When the argument is an existing `plan.json`, read the sibling `journeys.md` if 
 Approval is an explicit yes: `y`, `yes`, `approve`, or a sentence that tells you to write and run that plan. Then:
 
 ```sh
-node <package>/bin/journey.mjs run --root <app> <plan.json>
+node <package>/bin/uipilot.mjs run --root <app> <plan.json>
 ```
 
 `run` compiles the Playwright scripts and executes them. Report the summary, the gaps, and where the artifacts were written.

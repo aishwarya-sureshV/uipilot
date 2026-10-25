@@ -37,7 +37,7 @@ export async function serve(tools, call, input = process.stdin, output = process
       request = JSON.parse(line);
       if (!Object.hasOwn(request, 'id')) continue;
       let result;
-      if (request.method === 'initialize') result = { protocolVersion: request.params.protocolVersion, capabilities: { tools: {} }, serverInfo: { name: 'journey', version: '1.0.0' } };
+      if (request.method === 'initialize') result = { protocolVersion: request.params.protocolVersion, capabilities: { tools: {} }, serverInfo: { name: 'uipilot', version: '1.0.0' } };
       else if (request.method === 'tools/list') result = { tools };
       else if (request.method === 'ping') result = {};
       else if (request.method === 'tools/call') {

@@ -22,19 +22,19 @@ const plan = { journeys: [{ id: 'save-note', goal: 'Save and reopen a note', pre
 }] };
 
 test('sources reads src and skips a missing server directory', async () => {
-  const dir = await mkdtemp(path.join(tmpdir(), 'journey-src-'));
+  const dir = await mkdtemp(path.join(tmpdir(), 'uipilot-src-'));
   try {
     await mkdir(path.join(dir, 'src'), { recursive: true });
     await writeFile(path.join(dir, 'src/app.tsx'), 'export const a = 1;\n');
-    await mkdir(path.join(dir, 'tests/journeys/generated'), { recursive: true });
-    await writeFile(path.join(dir, 'tests/journeys/fixture.ts'), 'export const fixture = true;');
-    await writeFile(path.join(dir, 'tests/journeys/generated/old.spec.ts'), 'old generated test');
+    await mkdir(path.join(dir, 'tests/uipilot/generated'), { recursive: true });
+    await writeFile(path.join(dir, 'tests/uipilot/fixture.ts'), 'export const fixture = true;');
+    await writeFile(path.join(dir, 'tests/uipilot/generated/old.spec.ts'), 'old generated test');
     await writeFile(path.join(dir, 'playwright.config.ts'), 'export default {};');
     const found = await sources(dir, ['src', 'server']);
     assert.equal(found['src/app.tsx'], 'export const a = 1;\n');
-    assert.equal(found['tests/journeys/fixture.ts'], 'export const fixture = true;');
+    assert.equal(found['tests/uipilot/fixture.ts'], 'export const fixture = true;');
     assert.equal(found['playwright.config.ts'], 'export default {};');
-    assert.ok(!Object.hasOwn(found, 'tests/journeys/generated/old.spec.ts'));
+    assert.ok(!Object.hasOwn(found, 'tests/uipilot/generated/old.spec.ts'));
     await assert.rejects(sources(path.join(dir, 'missing'), ['src', 'server']), /No UI source files/);
   } finally { await rm(dir, { recursive: true, force: true }); }
 });
@@ -146,8 +146,8 @@ test('aligns unique exact evidence without accepting invented or ambiguous excer
 });
 
 test('validation retry receives source context and original task in a fresh process', async () => {
-  const dir = await mkdtemp(path.join(tmpdir(), 'journey-retry-'));
-  const previous = process.env.JOURNEY_CODEX_BIN;
+  const dir = await mkdtemp(path.join(tmpdir(), 'uipilot-retry-'));
+  const previous = process.env.UIPILOT_CODEX_BIN;
   try {
     const invalid = structuredClone(plan);
     invalid.journeys[0].effects[0].evidence[0].quote = 'inventedCall()';
@@ -165,7 +165,7 @@ await writeFile(output, JSON.stringify(answer));
 await writeFile(path.join(path.dirname(output), 'reads.jsonl'), JSON.stringify('src/example.tsx') + '\\n');
 `);
     await chmod(fake, 0o755);
-    process.env.JOURNEY_CODEX_BIN = fake;
+    process.env.UIPILOT_CODEX_BIN = fake;
     const result = await ask({ root: dir, files, prompt: 'Test save and reopen; preserve all assertions.', budget: { remaining: 1 } });
     assert.equal(result.journeys[0].goal, plan.journeys[0].goal);
     const prompts = (await readFile(path.join(dir, 'prompts.jsonl'), 'utf8')).trim().split('\n').map(JSON.parse);
@@ -194,7 +194,7 @@ await writeFile(path.join(path.dirname(output), 'reads.jsonl'), JSON.stringify('
     assert.ok(repairPrompts.every(prompt => !prompt.includes('Discover user goals by tracing')));
     assert.match(repairPrompts[1], /ORIGINAL TASK:\nRepair the frozen save journey\./);
   } finally {
-    if (previous === undefined) delete process.env.JOURNEY_CODEX_BIN; else process.env.JOURNEY_CODEX_BIN = previous;
+    if (previous === undefined) delete process.env.UIPILOT_CODEX_BIN; else process.env.UIPILOT_CODEX_BIN = previous;
     await rm(dir, { recursive: true, force: true });
   }
 });
@@ -215,7 +215,7 @@ test('repairs may change locator strategy but cannot weaken or redirect assertio
 });
 
 test('CLI retains browser repair allowance after correcting a draft', async () => {
-  const dir = await mkdtemp(path.join(tmpdir(), 'journey-cli-'));
+  const dir = await mkdtemp(path.join(tmpdir(), 'uipilot-cli-'));
   try {
     await mkdir(path.join(dir, 'src'));
     await writeFile(path.join(dir, 'src/example.tsx'), files['src/example.tsx']);
@@ -237,12 +237,12 @@ await writeFile(path.join(path.dirname(output), 'reads.jsonl'), JSON.stringify('
     await mkdir(runner, { recursive: true });
     await writeFile(path.join(runner, 'cli.js'), `
 const fs = require('node:fs');
-const passed = process.env.JOURNEY_TEST_DIR.endsWith('attempt-1');
+const passed = process.env.UIPILOT_TEST_DIR.endsWith('attempt-1');
 fs.writeFileSync(process.env.PLAYWRIGHT_JSON_OUTPUT_FILE, JSON.stringify({ suites: [], stats: { expected: passed ? 1 : 0, unexpected: passed ? 0 : 1, skipped: 0, flaky: 0 } }));
 process.exitCode = passed ? 0 : 1;
 `);
-    const result = spawnSync(process.execPath, [fileURLToPath(new URL('../bin/journey.mjs', import.meta.url)), 'auto', '--root', dir, '--repairs', '1'], {
-      env: { ...process.env, JOURNEY_CODEX_BIN: fake }, encoding: 'utf8', timeout: 20_000,
+    const result = spawnSync(process.execPath, [fileURLToPath(new URL('../bin/uipilot.mjs', import.meta.url)), 'auto', '--root', dir, '--repairs', '1'], {
+      env: { ...process.env, UIPILOT_CODEX_BIN: fake }, encoding: 'utf8', timeout: 20_000,
     });
     assert.equal(result.status, 0, result.stderr);
     const summaryPath = JSON.parse(result.stdout.match(/"summary": (".*")/)[1]);
@@ -256,7 +256,7 @@ process.exitCode = passed ? 0 : 1;
 });
 
 test('feedback loop passes diagnostics to repair, preserves attempts, and reruns', async () => {
-  const dir = await mkdtemp(path.join(tmpdir(), 'journey-'));
+  const dir = await mkdtemp(path.join(tmpdir(), 'uipilot-'));
   let runs = 0, repairs = 0;
   try {
     const result = await feedbackLoop({ root: dir, dir, plan, files, repairs: 2,
@@ -276,7 +276,7 @@ test('feedback loop passes diagnostics to repair, preserves attempts, and reruns
 });
 
 test('feedback loop stops at retry budget and rejects assertion removal', async () => {
-  const dir = await mkdtemp(path.join(tmpdir(), 'journey-'));
+  const dir = await mkdtemp(path.join(tmpdir(), 'uipilot-'));
   try {
     let runs = 0;
     const options = { root: dir, dir, plan, files, repairs: 1, run: async () => ({ passed: false, feedback: `failure ${++runs}` }) };
@@ -291,7 +291,7 @@ test('feedback loop stops at retry budget and rejects assertion removal', async 
 });
 
 test('passing browser checks cannot make a blocked requested task pass', async () => {
-  const dir = await mkdtemp(path.join(tmpdir(), 'journey-blocked-'));
+  const dir = await mkdtemp(path.join(tmpdir(), 'uipilot-blocked-'));
   try {
     const mixed = structuredClone(plan);
     const blocked = structuredClone(plan.journeys[0]);
@@ -316,7 +316,7 @@ test('diagnostics includes inline request and console logs', async () => {
 });
 
 test('runner rejects a green report when application source changes during execution', async () => {
-  const dir = await mkdtemp(path.join(tmpdir(), 'journey-drift-'));
+  const dir = await mkdtemp(path.join(tmpdir(), 'uipilot-drift-'));
   try {
     await mkdir(path.join(dir, 'src'));
     await writeFile(path.join(dir, 'src/example.tsx'), files['src/example.tsx']);
@@ -387,8 +387,8 @@ test('steps report as user tasks and fixture capabilities compile to act/probe c
     { kind: 'state', target: null, value: JSON.stringify({ probe: 'storedNotes', args: { device: 'fresh' }, excludes: 'Note 1' }) },
   );
   outcome.journeys[0].effects[0].coveredBy = [{ step: 'step-2', check: 2 }];
-  assert.throws(() => validate(structuredClone(outcome), files), /act "serverOffline" is not provided by tests\/journeys\/fixture.ts/);
-  const withFixture = { ...files, 'tests/journeys/fixture.ts': 'const acts = { serverOffline() {} };\nconst probes = { storedNotes() {} };\n' };
+  assert.throws(() => validate(structuredClone(outcome), files), /act "serverOffline" is not provided by tests\/uipilot\/fixture.ts/);
+  const withFixture = { ...files, 'tests/uipilot/fixture.ts': 'const acts = { serverOffline() {} };\nconst probes = { storedNotes() {} };\n' };
   const code = compile(validate(outcome, withFixture), './fixture');
   assert.equal(ts.createSourceFile('test.ts', code, ts.ScriptTarget.Latest, true).parseDiagnostics.length, 0);
   assert.match(code, /await app\.act\("serverOffline", \{"on":true\}\)/);
@@ -413,7 +413,7 @@ test('malformed JSON values fail as located plan errors the model can correct', 
 });
 
 test('default source scan covers common layouts and skips dependencies and build output', async () => {
-  const dir = await mkdtemp(path.join(tmpdir(), 'journey-layout-'));
+  const dir = await mkdtemp(path.join(tmpdir(), 'uipilot-layout-'));
   try {
     for (const file of ['src/Page.jsx', 'src/View.vue', 'src/Card.svelte', 'app/page.tsx', 'src/node_modules/x/index.js', 'src/dist/bundle.js', 'playwright.config.js']) {
       await mkdir(path.dirname(path.join(dir, file)), { recursive: true });
@@ -449,8 +449,8 @@ test('browser tools are offered to the model only with a base URL', async () => 
   const args = codexArgs('/tmp/x', '/tmp/reader.mjs', undefined, { script: '/pkg/src/browser-tool.mjs', root: '/app', baseUrl: 'http://localhost:5173' });
   assert.ok(args.includes(`mcp_servers.browser.args=${JSON.stringify(['/pkg/src/browser-tool.mjs', '/app', 'http://localhost:5173'])}`));
   assert.ok(args.includes('mcp_servers.browser.required=true'));
-  const dir = await mkdtemp(path.join(tmpdir(), 'journey-live-'));
-  const previous = process.env.JOURNEY_CODEX_BIN;
+  const dir = await mkdtemp(path.join(tmpdir(), 'uipilot-live-'));
+  const previous = process.env.UIPILOT_CODEX_BIN;
   try {
     const fake = path.join(dir, 'codex.mjs');
     await writeFile(fake, `#!/usr/bin/env node
@@ -463,7 +463,7 @@ await writeFile(output, JSON.stringify(${JSON.stringify(plan)}));
 await writeFile(path.join(path.dirname(output), 'reads.jsonl'), JSON.stringify('src/example.tsx') + '\\n');
 `);
     await chmod(fake, 0o755);
-    process.env.JOURNEY_CODEX_BIN = fake;
+    process.env.UIPILOT_CODEX_BIN = fake;
     await ask({ root: dir, files, prompt: 'Discover', baseUrl: 'http://localhost:5173' });
     const seen = JSON.parse(await readFile(path.join(dir, 'seen.json'), 'utf8'));
     assert.match(seen.prompt, /LIVE APP\. The running app is at http:\/\/localhost:5173/);
@@ -474,7 +474,7 @@ await writeFile(path.join(path.dirname(output), 'reads.jsonl'), JSON.stringify('
     const plain = JSON.parse(await readFile(path.join(dir, 'seen.json'), 'utf8'));
     assert.doesNotMatch(plain.prompt, /LIVE APP/);
   } finally {
-    if (previous === undefined) delete process.env.JOURNEY_CODEX_BIN; else process.env.JOURNEY_CODEX_BIN = previous;
+    if (previous === undefined) delete process.env.UIPILOT_CODEX_BIN; else process.env.UIPILOT_CODEX_BIN = previous;
     await rm(dir, { recursive: true, force: true });
   }
 });
